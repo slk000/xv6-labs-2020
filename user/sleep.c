@@ -5,7 +5,7 @@ int
 main(int argc, char *argv[])
 {
     if (argc <= 1) {
-        fprintf(2, "Usage: ");
+        fprintf(2, "Usage: sleep ticks\n");
         exit(1);
     }
 
