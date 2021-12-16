@@ -60,7 +60,6 @@ start:;
         // printf("create child: %d\n", pid);
 
         int num;
-        // printf("num:%d\n", num);
 		while(-1 != (num = read_num(left))) {
             log(6);
 			if (num % prime != 0) {
