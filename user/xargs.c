@@ -80,10 +80,9 @@ main(int argc, char *argv[])
 
     int cnt = 0;
     char *p = &largv[0][0]; // current char in one arg
-    char ch;
 
     // split by \n
-    while(cnt = read(0, p, 1)) {
+    while((cnt = read(0, p, 1))) {
         // printf("read: %c\n", *p);
         if (*p == '\n') {
             *p = 0;
