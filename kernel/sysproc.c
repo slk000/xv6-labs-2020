@@ -6,6 +6,7 @@
 #include "memlayout.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "sysinfo.h"
 
 uint64
 sys_exit(void)
@@ -107,5 +108,21 @@ sys_trace(void)
 
   // set trace mask for trace cmd. then in user/trace.c exec will be called and replaced by executable that to trace
   myproc()->trace = (uint32)mask;
+  return 0;
+}
+
+// is sysproc.c a good place for this?
+uint64
+sys_sysinfo(void)
+{
+  struct proc *p = myproc();
+  struct sysinfo info;
+  info.freemem = freemem(); // the freemem field should be set to the number of bytes of free memory
+  info.nproc = nproc(); // the nproc field should be set to the number of processes whose state is not UNUSED
+
+  uint64 udst; // user space addr to store the sysinfo result
+  if(argaddr(0, &udst) < 0 || copyout(p->pagetable, udst, (char *)&info, sizeof(info)) < 0) {
+    return -1;
+  }
   return 0;
 }
