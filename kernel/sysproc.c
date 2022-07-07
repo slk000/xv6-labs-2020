@@ -95,3 +95,17 @@ sys_uptime(void)
   release(&tickslock);
   return xticks;
 }
+
+uint64
+sys_trace(void)
+{
+  int mask; // which syscalls to trace
+  if(argint(0, &mask) < 0) {
+    return -1;
+  }
+  // printf("Mask: %d\n Path: %s\n", mask);
+
+  // set trace mask for trace cmd. then in user/trace.c exec will be called and replaced by executable that to trace
+  myproc()->trace = (uint32)mask;
+  return 0;
+}
