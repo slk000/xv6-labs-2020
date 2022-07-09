@@ -440,3 +440,49 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return -1;
   }
 }
+
+/*
+page table 0x0000000087f6e000 // the argument to vmprint
+..0:           pte 0x0000000021fda801 pa 0x0000000087f6a000 // " .." indicates its depth in the page tree
+.. ..0:        pte 0x0000000021fda401 pa 0x0000000087f69000 // then the PTE index in its page-table page
+.. .. ..0:     pte 0x0000000021fdac1f pa 0x0000000087f6b000 // then the pte bits, and the physical address
+.. .. ..1:     pte 0x0000000021fda00f pa 0x0000000087f68000 // show only valid entries
+.. .. ..2:     pte 0x0000000021fd9c1f pa 0x0000000087f67000
+..255:         pte 0x0000000021fdb401 pa 0x0000000087f6d000
+.. ..511:      pte 0x0000000021fdb001 pa 0x0000000087f6c000
+.. .. ..510:   pte 0x0000000021fdd807 pa 0x0000000087f76000
+.. .. ..511:   pte 0x0000000020001c0b pa 0x0000000080007000
+how to solve this using recursion?
+*/
+void
+vmprint(pagetable_t pagetable2)
+{
+  printf("page table %p\n", pagetable2);
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){ // ROOT pagetable
+  // this PTE points to a lower-level page table.
+    pte_t pte2 = pagetable2[i];
+    if(pte2 & PTE_V){
+      uint64 child2 = PTE2PA(pte2);
+      printf("..%d: pte %p pa %p\n", i, pte2, child2);
+      
+      for (int j = 0; j < 512; j++){ // SECOND level
+        pagetable_t pagetable1 = (pagetable_t)child2;
+        pte_t pte1 = pagetable1[j];
+        if (pte1 & PTE_V){
+          uint64 child1 = PTE2PA(pte1);
+          printf(".. ..%d: pte %p pa %p\n", j, pte1, child1);
+
+          for (int k = 0; k < 512; k++){ //THIRD level
+            pagetable_t pagetable0 = (pagetable_t)child1;
+            pte_t pte0 = pagetable0[k];
+            if (pte0 & PTE_V){
+              uint64 child0 = PTE2PA(pte0);
+              printf(".. .. ..%d: pte %p pa %p\n", k, pte0, child0);
+            }
+          } // THIRD level
+        }        
+      } // SECOND level
+    } 
+  } // ROOT level
+}
