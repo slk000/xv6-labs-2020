@@ -1,0 +1,10 @@
+levels             pte                   pa                     user mode privilege
+..0:           pte 0x0000000021fda801 pa 0x0000000087f6a000     V
+.. ..0:        pte 0x0000000021fda401 pa 0x0000000087f69000     V
+.. .. ..0:     pte 0x0000000021fdac1f pa 0x0000000087f6b000     V R W X U               <--- text & data
+.. .. ..1:     pte 0x0000000021fda00f pa 0x0000000087f68000     V R W X                 <--- guard page
+.. .. ..2:     pte 0x0000000021fd9c1f pa 0x0000000087f67000     V R W X U               <--- user stack
+..255:         pte 0x0000000021fdb401 pa 0x0000000087f6d000     V
+.. ..511:      pte 0x0000000021fdb001 pa 0x0000000087f6c000     V
+.. .. ..510:   pte 0x0000000021fdd807 pa 0x0000000087f76000     V R W
+.. .. ..511:   pte 0x0000000020001c0b pa 0x0000000080007000     V R   X

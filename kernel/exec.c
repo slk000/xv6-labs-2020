@@ -37,6 +37,8 @@ exec(char *path, char **argv)
 
   if((pagetable = proc_pagetable(p)) == 0)
     goto bad;
+  // do not need to allocate a new kernel pagetable,
+  // only need to unmap old entries in the previous one.(before exec() return)
 
   // Load program into memory.
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
@@ -47,6 +49,8 @@ exec(char *path, char **argv)
     if(ph.memsz < ph.filesz)
       goto bad;
     if(ph.vaddr + ph.memsz < ph.vaddr)
+      goto bad;
+    if(ph.vaddr + ph.memsz >= PLIC)
       goto bad;
     uint64 sz1;
     if((sz1 = uvmalloc(pagetable, sz, ph.vaddr + ph.memsz)) == 0)
@@ -115,6 +119,12 @@ exec(char *path, char **argv)
   p->trapframe->epc = elf.entry;  // initial program counter = main
   p->trapframe->sp = sp; // initial stack pointer
   proc_freepagetable(oldpagetable, oldsz);
+
+  // unmap the mappings which are copied from user's pagetable (vaddr 0~user proc size),
+  // do not touch the kernel part(do not create new kernel pagetable)
+  // in case of destroying it.
+  uvmunmap(p->kpagetable, 0, PGROUNDUP(oldsz)/PGSIZE, 0);
+  kptcopy(p->pagetable, p->kpagetable, 0, p->sz);
 
   if(p->pid==1) vmprint(p->pagetable);
   return argc; // this ends up in a0, the first argument to main(argc, argv)

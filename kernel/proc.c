@@ -128,7 +128,7 @@ found:
     release(&p->lock);
     return 0;
   }
-  uktblinit(p);
+  uktblinit(p->kpagetable);
   char *pa = kalloc();
   if(pa == 0)
     panic("kalloc");
@@ -158,6 +158,21 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+
+  // free kernel stack first before freeing kpagetable
+  if(p->kstack) {
+    uvmunmap(p->kpagetable, p->kstack, 1, 1);
+  }
+  p->kstack = 0;
+
+  // free kernel page table without freeing physical memory
+  if(p->kpagetable) {
+    // pagetable_t tmp = p->kpagetable;
+    proc_freekpagetable(p->kpagetable);
+    // vmprint(tmp);
+  }
+
+  p->kpagetable = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -165,18 +180,8 @@ freeproc(struct proc *p)
   p->chan = 0;
   p->killed = 0;
   p->xstate = 0;
-  // free kernel stack
-  if(p->kstack) {
-    uvmunmap(p->kpagetable, p->kstack, 1, 1);
-  }
-  p->kstack = 0;
-  // free kernel page table without freeing physical memory
-  if(p->kpagetable) {
-    // pagetable_t tmp = p->kpagetable;
-    proc_freekpagetable(p->kpagetable);
-    // vmprint(tmp);
-  }
-  p->kpagetable = 0;
+
+
   p->state = UNUSED;
 }
 
@@ -227,18 +232,18 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
 void
 proc_freekpagetable(pagetable_t kpagetable)
 {
-  // unmap first
-  uvmunmap(kpagetable, UART0, 1, 0);
-  uvmunmap(kpagetable, VIRTIO0, 1, 0);
-  uvmunmap(kpagetable, CLINT, 0x10000 / PGSIZE, 0);
-  uvmunmap(kpagetable, PLIC, 0x400000 / PGSIZE, 0);
-  uvmunmap(kpagetable, KERNBASE, (PHYSTOP - KERNBASE) / PGSIZE, 0);
-  // is trapframe necessary for every kernel pagetable?
-  uvmunmap(kpagetable, TRAPFRAME, 1, 0); // don't forget unmap this since I use proc_pagetable() to create the pagetable where maps TRAPFRAME
-  uvmunmap(kpagetable, TRAMPOLINE, 1, 0);
-  
-  // free the pagetable itself, not the kernel memory.
-  uvmfree(kpagetable, 0);
+  // there are 2^9 = 512 PTEs in a page table.
+  for(int i = 0; i < 512; i++){
+    pte_t pte = kpagetable[i];
+    if(pte & PTE_V){
+      kpagetable[i] = 0;
+      if((pte & (PTE_R|PTE_W|PTE_X)) == 0){
+        uint64 child = PTE2PA(pte);
+        proc_freekpagetable((pagetable_t)child);
+      }
+    }    
+  }
+  kfree((void*)kpagetable);
 }
 
 // a user program that calls exec("/init")
@@ -266,6 +271,7 @@ userinit(void)
   // and data into it.
   uvminit(p->pagetable, initcode, sizeof(initcode));
   p->sz = PGSIZE;
+  mappages(p->kpagetable, 0, PGSIZE, walkaddr(p->pagetable, 0), PTE_W|PTE_R|PTE_X);
 
   // prepare for the very first "return" from kernel to user.
   p->trapframe->epc = 0;      // user program counter
@@ -289,11 +295,21 @@ growproc(int n)
 
   sz = p->sz;
   if(n > 0){
+    if(sz + n >= PLIC){
+      return -1;
+    }
+    // if sz+n do not exceed the same page, uvmalloc will do nothing.
     if((sz = uvmalloc(p->pagetable, sz, sz + n)) == 0) {
+      return -1;
+    }
+    // USE p->sz, NOT sz
+    if(kptcopy(p->pagetable, p->kpagetable, p->sz, p->sz+n) < 0){
+      uvmdealloc(p->pagetable, sz, p->sz); // remember to dealloc user memory when kptcopy fails
       return -1;
     }
   } else if(n < 0){
     sz = uvmdealloc(p->pagetable, sz, sz + n);
+    kvmdealloc(p->kpagetable, p->sz, p->sz+n);
   }
   p->sz = sz;
   return 0;
@@ -322,6 +338,16 @@ fork(void)
   np->sz = p->sz;
 
   np->parent = p;
+
+  // printf("old kpgtbl: %p new :%p\n", p->kpagetable, np->kpagetable);
+  // printf("dump of old kpgtbl:\n"); vmprint(p->kpagetable);
+  // Copy user pagetable into kernel pagetable
+  // if(kptcopy(p->pagetable, np->kpagetable, 0, np->sz) < 0){ // <- VERY BAD
+  if(kptcopy(np->pagetable, np->kpagetable, 0, np->sz) < 0){
+    freeproc(np);
+    release(&np->lock);
+    return -1;
+  }
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
