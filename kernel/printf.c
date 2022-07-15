@@ -117,6 +117,7 @@ printf(char *fmt, ...)
 void
 panic(char *s)
 {
+  backtrace();
   pr.locking = 0;
   printf("panic: ");
   printf(s);
@@ -131,4 +132,20 @@ printfinit(void)
 {
   initlock(&pr.lock, "pr");
   pr.locking = 1;
+}
+
+void
+backtrace(void)
+{
+  uint64 *fp = (uint64*)r_fp(); // frame pointer
+  for(;;){
+    uint64 *pret = fp-1; // -1*8bytes
+    uint64 *psavedfp = fp-2; // -2*8bytes
+    // printf("nowfp: %p ret:%p savedfp%p\n", fp, *pret, *psavedfp);
+    printf("%p\n", *pret);
+    fp = (uint64*)*psavedfp;
+    // all frames are within one page, so the last frame has the same addr as the page
+    if (PGROUNDUP((uint64)fp) == (uint64)fp)break;
+  }
+
 }
