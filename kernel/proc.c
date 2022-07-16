@@ -112,6 +112,10 @@ found:
     release(&p->lock);
     return 0;
   }
+  if((p->alarmsavedtf = (struct trapframe *)kalloc()) == 0){
+    release(&p->lock);
+    return 0;
+  }
 
   // An empty user page table.
   p->pagetable = proc_pagetable(p);
@@ -127,6 +131,8 @@ found:
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
+  p->alarminterval = 0;
+  p->alarmhandler = 0;
   return p;
 }
 
@@ -139,6 +145,9 @@ freeproc(struct proc *p)
   if(p->trapframe)
     kfree((void*)p->trapframe);
   p->trapframe = 0;
+  if(p->alarmsavedtf)
+    kfree((void*)p->alarmsavedtf);
+  p->alarmsavedtf = 0;
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
@@ -279,6 +288,8 @@ fork(void)
 
   // copy saved user registers.
   *(np->trapframe) = *(p->trapframe);
+  if(p->alarmsavedtf)
+    *(np->alarmsavedtf) = *(p->alarmsavedtf);
 
   // Cause fork to return 0 in the child.
   np->trapframe->a0 = 0;
@@ -696,4 +707,28 @@ procdump(void)
     printf("%d %s %s", p->pid, state, p->name);
     printf("\n");
   }
+}
+
+int
+sigalarm(int ticks, void (*handler)())
+{
+  if(ticks < 0)
+    return -1;
+  
+  struct proc *p = myproc();
+  p->alarminterval = ticks;
+  p->ticksleft = ticks;
+  p->alarmhandler = handler;
+  printf("set interval %d handler:va%p pa%p\n", ticks, handler, walkaddr(p->pagetable, (uint64)handler));
+  return 0;
+}
+
+int
+sigreturn(void)
+{
+  struct proc *p = myproc();
+  // restore the timer
+  p->ticksleft = p->alarminterval;
+  *(p->trapframe) = *(p->alarmsavedtf);
+  return 0;
 }
