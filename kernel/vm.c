@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -95,16 +97,18 @@ uint64
 walkaddr(pagetable_t pagetable, uint64 va)
 {
   pte_t *pte;
-  uint64 pa;
+  uint64 pa = 0;
 
   if(va >= MAXVA)
     return 0;
 
   pte = walk(pagetable, va, 0);
-  if(pte == 0)
-    return 0;
-  if((*pte & PTE_V) == 0)
-    return 0;
+  if(pte == 0 || (*pte & PTE_V) == 0){
+    if(chklazyalloc(va) == -1 || (pa = uvmlazyalloc(pagetable, va)) == 0){
+      return pa;
+    }
+  }
+    
   if((*pte & PTE_U) == 0)
     return 0;
   pa = PTE2PA(*pte);
@@ -181,12 +185,12 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
-      panic("uvmunmap: walk");
+      continue; // panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
-      panic("uvmunmap: not mapped");
+      continue; // panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
-    if(do_free){
+    if(do_free && *pte){
       uint64 pa = PTE2PA(*pte);
       kfree((void*)pa);
     }
@@ -249,6 +253,43 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
     }
   }
   return newsz;
+}
+
+// Do the allocation at a verified va
+// return 0 if failed
+// DO NOT return -1 because it returns unsigned addr.
+uint64
+uvmlazyalloc(pagetable_t pagetable, uint64 va)
+{
+  // Handle out-of-memory correctly: if kalloc() fails in the page fault handler, kill the current process.
+  char *mem ;
+  if((mem = kalloc()) == 0){ // alloc a page
+    return 0;
+  }
+  memset(mem, 0, PGSIZE);
+
+  // map from PGROUNDDOWN(va), not va
+  if(mappages(pagetable, PGROUNDDOWN(va), PGSIZE, (uint64)mem, PTE_W|PTE_X|PTE_R|PTE_U) != 0){
+    kfree(mem);
+    return 0;
+  }
+  return (uint64)mem;
+}
+
+// check if it is a valid va
+// ret 0 == va is ok
+// ret -1 == va is invalid
+int
+chklazyalloc(uint64 va)
+{
+  struct proc *p = myproc();
+
+  // (in trap.c)Kill a process if it page-faults on a virtual memory address higher than any allocated with sbrk().
+  // Handle faults on the invalid page below the user stack.
+  if(va >= p->sz || va < PGROUNDUP(p->trapframe->sp)){
+    return -1;
+  }
+  return 0;
 }
 
 // Deallocate user pages to bring the process size from oldsz to
@@ -315,9 +356,9 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
-      panic("uvmcopy: pte should exist");
+      continue; // panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
-      panic("uvmcopy: page not present");
+      continue; // panic("uvmcopy: page not present");
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
     if((mem = kalloc()) == 0)

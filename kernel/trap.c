@@ -65,7 +65,16 @@ usertrap(void)
     intr_on();
 
     syscall();
-  } else if((which_dev = devintr()) != 0){
+  } 
+  else if(r_scause() == 13 || r_scause() == 15) {
+    uint64 va = r_stval(); // va of the faulting addr
+    // printf("[p %d:%s scause %d accessing va%p @sepc %p]\n",p->pid, p->name, r_scause(), va, r_sepc());
+
+    if(chklazyalloc(va) == -1 || uvmlazyalloc(p->pagetable, va) == 0){
+      p->killed = 1;
+    }
+  }
+  else if((which_dev = devintr()) != 0){
     // ok
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
