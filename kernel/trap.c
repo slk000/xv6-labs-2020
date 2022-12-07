@@ -67,6 +67,51 @@ usertrap(void)
     syscall();
   } else if((which_dev = devintr()) != 0){
     // ok
+  } else if(r_scause() == 15){
+    // page fault
+    uint64 va = r_stval(); // the faulting va
+    uint64 pa;
+    uint flags;
+    char *mem;
+    pte_t *pte;
+    if((pte = walk(p->pagetable, PGROUNDDOWN(va), 0)) == 0){
+      // pte should exist
+      p->killed = 1;
+      exit(-1);
+    }
+    if((*pte & PTE_V) == 0){
+      // page not present
+      p->killed = 1;
+      exit(-1);
+    }
+    if(*pte & PTE_COW){ // page fault on a COW page
+      pa = PTE2PA(*pte);
+      flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW; // new page with write bit set, and clear cow bit
+      if((mem = kalloc()) == 0){ // If a COW page fault occurs and there's no free memory, the process should be killed.
+        p->killed = 1;
+        exit(-1);
+      }
+      memmove(mem, (char*)pa, PGSIZE); // copy
+      *pte = PA2PTE(mem) | flags; // modify the pa in the pte
+      incref((uint64)mem);
+      // if(decref(pa) == 0){ 
+        // IMPORTANT: if the parent tries to modify its (shared) page,
+        // which is marked with PTE_COW, a new copy will be made.
+        // and the original pte will be pointed to the new addr (mem).
+        // This causes the problem: when the parent exits, the original 
+        // page WILL NOT be freed because the old pte is missing.
+        // Thus check whether addr pa should be freed BEFORE missing the pte of pa
+        // kfree((void*)pa);
+        kfree((void*)pa);
+      // }
+      
+    }
+    else{
+      // pagefault on invalid addr
+      // tested in usertest:stacktest
+      p->killed = -1;
+    }
+
   } else {
     printf("usertrap(): unexpected scause %p pid=%d\n", r_scause(), p->pid);
     printf("            sepc=%p stval=%p\n", r_sepc(), r_stval());

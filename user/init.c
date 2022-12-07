@@ -9,6 +9,7 @@
 #include "user/user.h"
 #include "kernel/fcntl.h"
 
+// char *argv[] = { "usertests", 0 };
 char *argv[] = { "sh", 0 };
 
 int
@@ -31,11 +32,12 @@ main(void)
       exit(1);
     }
     if(pid == 0){
+      // exec("usertests", argv);
       exec("sh", argv);
       printf("init: exec sh failed\n");
       exit(1);
     }
-
+    // for(;;);
     for(;;){
       // this call to wait() returns if the shell exits,
       // or if a parentless process exits.

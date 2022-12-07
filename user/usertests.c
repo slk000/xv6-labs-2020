@@ -2595,13 +2595,13 @@ countfree()
 
   if(pid == 0){
     close(fds[0]);
-    
+    uint64 lasta = 0;
     while(1){
       uint64 a = (uint64) sbrk(4096);
       if(a == 0xffffffffffffffff){
         break;
       }
-
+      lasta = a;
       // modify the memory to make sure it's really allocated.
       *(char *)(a + 4096 - 1) = 1;
 
@@ -2611,6 +2611,7 @@ countfree()
         exit(1);
       }
     }
+    printf("%p\n", lasta);
 
     exit(0);
   }
@@ -2682,64 +2683,64 @@ main(int argc, char *argv[])
     void (*f)(char *);
     char *s;
   } tests[] = {
-    {execout, "execout"},
-    {copyin, "copyin"},
-    {copyout, "copyout"},
-    {copyinstr1, "copyinstr1"},
-    {copyinstr2, "copyinstr2"},
-    {copyinstr3, "copyinstr3"},
-    {rwsbrk, "rwsbrk" },
-    {truncate1, "truncate1"},
-    {truncate2, "truncate2"},
-    {truncate3, "truncate3"},
-    {reparent2, "reparent2"},
-    {pgbug, "pgbug" },
-    {sbrkbugs, "sbrkbugs" },
-    // {badwrite, "badwrite" },
-    {badarg, "badarg" },
-    {reparent, "reparent" },
-    {twochildren, "twochildren"},
-    {forkfork, "forkfork"},
-    {forkforkfork, "forkforkfork"},
-    {argptest, "argptest"},
-    {createdelete, "createdelete"},
-    {linkunlink, "linkunlink"},
-    {linktest, "linktest"},
-    {unlinkread, "unlinkread"},
-    {concreate, "concreate"},
-    {subdir, "subdir"},
-    {fourfiles, "fourfiles"},
-    {sharedfd, "sharedfd"},
-    {dirtest, "dirtest"},
-    {exectest, "exectest"},
-    {bigargtest, "bigargtest"},
-    {bigwrite, "bigwrite"},
-    {bsstest, "bsstest"},
-    {sbrkbasic, "sbrkbasic"},
-    {sbrkmuch, "sbrkmuch"},
-    {kernmem, "kernmem"},
-    {sbrkfail, "sbrkfail"},
-    {sbrkarg, "sbrkarg"},
-    {validatetest, "validatetest"},
-    {stacktest, "stacktest"},
-    {opentest, "opentest"},
-    {writetest, "writetest"},
-    {writebig, "writebig"},
-    {createtest, "createtest"},
-    {openiputtest, "openiput"},
-    {exitiputtest, "exitiput"},
-    {iputtest, "iput"},
-    {mem, "mem"},
-    {pipe1, "pipe1"},
-    {preempt, "preempt"},
-    {exitwait, "exitwait"},
-    {rmdot, "rmdot"},
-    {fourteen, "fourteen"},
-    {bigfile, "bigfile"},
-    {dirfile, "dirfile"},
-    {iref, "iref"},
-    {forktest, "forktest"},
-    {bigdir, "bigdir"}, // slow
+    // {execout, "execout"},
+    // {copyin, "copyin"},
+    // {copyout, "copyout"},
+    // {copyinstr1, "copyinstr1"},
+    // {copyinstr2, "copyinstr2"},
+    // {copyinstr3, "copyinstr3"},
+    // {rwsbrk, "rwsbrk" },
+    // {truncate1, "truncate1"},
+    // {truncate2, "truncate2"},
+    // {truncate3, "truncate3"},
+    // {reparent2, "reparent2"},
+    // {pgbug, "pgbug" },
+    // {sbrkbugs, "sbrkbugs" },
+    // // {badwrite, "badwrite" },
+    // {badarg, "badarg" },
+    // {reparent, "reparent" },
+    // {twochildren, "twochildren"},
+    // {forkfork, "forkfork"},
+    // {forkforkfork, "forkforkfork"},
+    // {argptest, "argptest"},
+    // {createdelete, "createdelete"},
+    // {linkunlink, "linkunlink"},
+    // {linktest, "linktest"},
+    // {unlinkread, "unlinkread"},
+    // {concreate, "concreate"},
+    // {subdir, "subdir"},
+    // {fourfiles, "fourfiles"},
+    // {sharedfd, "sharedfd"},
+    // {dirtest, "dirtest"},
+    // {exectest, "exectest"},
+    // {bigargtest, "bigargtest"},
+    // {bigwrite, "bigwrite"},
+    // {bsstest, "bsstest"},
+    // {sbrkbasic, "sbrkbasic"},
+    // {sbrkmuch, "sbrkmuch"},
+    // {kernmem, "kernmem"},
+    // {sbrkfail, "sbrkfail"},
+    // {sbrkarg, "sbrkarg"},
+    // {validatetest, "validatetest"},
+    // {stacktest, "stacktest"},
+    // {opentest, "opentest"},
+    // {writetest, "writetest"},
+    // {writebig, "writebig"},
+    // {createtest, "createtest"},
+    // {openiputtest, "openiput"},
+    // {exitiputtest, "exitiput"},
+    // {iputtest, "iput"},
+    // {mem, "mem"},
+    // {pipe1, "pipe1"},
+    // {preempt, "preempt"},
+    // {exitwait, "exitwait"},
+    // {rmdot, "rmdot"},
+    // {fourteen, "fourteen"},
+    // {bigfile, "bigfile"},
+    // {dirfile, "dirfile"},
+    // {iref, "iref"},
+    // {forktest, "forktest"},
+    // {bigdir, "bigdir"}, // slow
     { 0, 0},
   };
 
@@ -2778,7 +2779,7 @@ main(int argc, char *argv[])
         fail = 1;
     }
   }
-
+  printf("second\n");
   if(fail){
     printf("SOME TESTS FAILED\n");
     exit(1);

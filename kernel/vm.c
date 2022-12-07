@@ -5,6 +5,8 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs.h"
+#include "spinlock.h"
+#include "proc.h"
 
 /*
  * the kernel's page table.
@@ -159,6 +161,7 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
     if(*pte & PTE_V)
       panic("remap");
     *pte = PA2PTE(pa) | perm | PTE_V;
+    // incref(pa);
     if(a == last)
       break;
     a += PGSIZE;
@@ -178,7 +181,8 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   if((va % PGSIZE) != 0)
     panic("uvmunmap: not aligned");
-
+  // struct proc *p = myproc();
+  // printf("child of %d:%s is being cleaned , #pages:%d\n",p->pid, p->name, npages);
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
       panic("uvmunmap: walk");
@@ -186,9 +190,13 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
       panic("uvmunmap: not mapped");
     if(PTE_FLAGS(*pte) == PTE_V)
       panic("uvmunmap: not a leaf");
+    uint64 pa = PTE2PA(*pte);
+    // int cnt = decref(pa);cnt=cnt;// decrease the ref cnt
+    // here p is the parent of the proc being cleaned
     if(do_free){
-      uint64 pa = PTE2PA(*pte);
-      kfree((void*)pa);
+    //  if(cnt==0) 
+      // printf("d %p\n",pa);
+     kfree((void*)pa);
     }
     *pte = 0;
   }
@@ -248,6 +256,7 @@ uvmalloc(pagetable_t pagetable, uint64 oldsz, uint64 newsz)
       return 0;
     }
   }
+  // printf("a %p\n", mem);
   return newsz;
 }
 
@@ -311,22 +320,27 @@ uvmcopy(pagetable_t old, pagetable_t new, uint64 sz)
   pte_t *pte;
   uint64 pa, i;
   uint flags;
-  char *mem;
+  // char *mem;
 
   for(i = 0; i < sz; i += PGSIZE){
     if((pte = walk(old, i, 0)) == 0)
       panic("uvmcopy: pte should exist");
     if((*pte & PTE_V) == 0)
       panic("uvmcopy: page not present");
+    *pte &= ~PTE_W; // clear PTE_W for both child and parent.
+    *pte |= PTE_COW; // mark it as a COW page for both child and parent
     pa = PTE2PA(*pte);
     flags = PTE_FLAGS(*pte);
-    if((mem = kalloc()) == 0)
-      goto err;
-    memmove(mem, (char*)pa, PGSIZE);
-    if(mappages(new, i, PGSIZE, (uint64)mem, flags) != 0){
-      kfree(mem);
+    // if((mem = kalloc()) == 0)
+    //   goto err;
+    // memmove(mem, (char*)pa, PGSIZE);
+    if(mappages(new, i, PGSIZE, pa, flags) != 0){
+      // kfree(mem);
       goto err;
     }
+    // inc the refcnt of pa
+    incref(pa);
+    // printf("incref @%p to %d \n", pa, incref(pa));
   }
   return 0;
 
@@ -364,7 +378,32 @@ copyout(pagetable_t pagetable, uint64 dstva, char *src, uint64 len)
     n = PGSIZE - (dstva - va0);
     if(n > len)
       n = len;
-    memmove((void *)(pa0 + (dstva - va0)), src, n);
+    // Modify copyout() to use the same scheme as page faults when it encounters a COW page.
+    // Means when dstva is in a COW page, create a new page for copyout
+    pte_t *pte = walk(pagetable, va0, 0);
+    if(*pte & PTE_COW){
+      char *mem;
+      if((mem = kalloc()) == 0){
+        return -1;
+      }
+      memmove(mem, (void*)pa0, PGSIZE);
+
+      // uvmunmap(pagetable, va0, 1, 1);
+      // mappages(pagetable, va0, PGSIZE, mem, PTE_R|PTE_W|PTE_U);
+      uint flags = (PTE_FLAGS(*pte) | PTE_W) & ~PTE_COW; // new page with write bit set, and clear cow bit
+      *pte = PA2PTE(mem) | flags;
+
+      incref((uint64)mem);
+      // if((decref(pa0) == 0)){
+      //   kfree((void*)pa0);
+      // }
+      pa0 = (uint64)mem;
+      // memmove((void *)(mem + (dstva - va0)), src, n);
+    }
+    // else{
+      memmove((void *)(pa0 + (dstva - va0)), src, n);
+    // }
+
 
     len -= n;
     src += n;
